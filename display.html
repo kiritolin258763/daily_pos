@@ -15,43 +15,71 @@
   </div>
 
   <script>
-    const SHEET_URL = "https://script.google.com/macros/s/AKfycbyf8hxhEbzKsfihMr9QoIQL4WKfy541oakSscN8t7_F-pAKfS_Hgx_YH9F3FTH3n09P/exec";
+    const SHEET_URL = "https://script.google.com/macros/s/AKfycbyPwtz3iQnuW-AgevyncjI8Tpzn-py_tvk-K4l-ctHx9KyRge4r0ezTO6mHbG3brUbPfA/exec";
     const display = document.getElementById('display');
-    let lastTxn = "";
+    let lastTxn = "";
+    let timeoutID = null; 
+    async function fetchLatest() {
+      try {
+        const res = await fetch(SHEET_URL);
+        const data = await res.json();
 
-    async function fetchLatest() {
-      try {
-        const res = await fetch(SHEET_URL);
-        const data = await res.json();
+        if (data.txnId && data.txnId !== lastTxn) {
+          lastTxn = data.txnId;
+          showTransaction(data); 
+        }
+      } catch (err) {
+        console.log("讀取錯誤", err);
+      }
+    }
 
-        if (data.txnId !== lastTxn) {
-          lastTxn = data.txnId;
-          if (data.payment === "Cash") {
-            showChange(data.change);
-          }
+    function showTransaction(data) {
+        if (timeoutID) {
+            clearTimeout(timeoutID);
+            timeoutID = null;
         }
-      } catch (err) {
-        console.log("讀取錯誤", err);
-      }
+        const total = data.total;
+        const payment = data.payment;
+        const change = data.change;
+        let content = '';
+
+        if (data.status === 'No Data') {
+             content = `<p class="text-3xl">等待中...</p>`;
+        } else if (payment === 'Cash' && change > 0) {
+            content = `
+              <p class="text-3xl font-bold mb-4">交易總額：<span class="text-green-400">${total}</span> 元</p>
+              <p class="text-4xl font-bold mb-4">💰 應找零金額</p>
+              <p class="text-7xl font-extrabold text-yellow-400">${change}</p>
+              <p class="text-2xl mt-4">元</p>
+            `;
+            timeoutID = setTimeout(showCard, 20000); 
+        } else if (payment === 'Cash' && change === 0) {
+            content = `
+              <p class="text-4xl font-bold mb-4">交易總額：<span class="text-green-400">${total}</span> 元</p>
+              <p class="text-7xl font-extrabold text-white">謝謝！</p>
+              <p class="text-2xl mt-4">不需找零</p>
+            `;
+            timeoutID = setTimeout(showCard, 20000); 
+        } else {
+            content = `
+              <p class="text-4xl font-bold mb-4">交易總額 (${payment})</p>
+              <p class="text-7xl font-extrabold text-blue-400">${total}</p>
+              <p class="text-3xl mt-8">請掃描付款碼</p>
+            `;
+            timeoutID = setTimeout(showCard, 20000); 
+        }
+        
+        display.innerHTML = content;
     }
 
-    function showChange(change) {
-      display.innerHTML = `
-        <p class="text-4xl font-bold mb-4">💰 找零金額</p>
-        <p class="text-7xl font-extrabold text-yellow-400">${change}</p>
-        <p class="text-2xl mt-4">元</p>
-      `;
-      setTimeout(showCard, 20000); // 20秒後切回名片
-    }
-
-    function showCard() {
-      display.innerHTML = `
-        <img src="businesscard.png" alt="電子名片" class="w-full h-auto mx-auto rounded-lg shadow-lg" />
-      `;
-    }
-
-    // 每2秒檢查一次是否有新交易
-    setInterval(fetchLatest, 2000);
+    function showCard() {
+      display.innerHTML = `
+        <p class="text-3xl">歡迎光臨</p>
+      `;
+      timeoutID = null;
+    }
+    showCard(); 
+    setInterval(fetchLatest, 2000);
   </script>
 </body>
 </html>
