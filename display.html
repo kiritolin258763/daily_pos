@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>找零顯示</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body, html { height: 100%; }
+  </style>
+</head>
+<body class="bg-black flex items-center justify-center">
+  <div id="display" class="text-white text-center">
+    <p class="text-3xl">等待中...</p>
+  </div>
+
+  <script>
+    const SHEET_URL = "https://script.google.com/macros/s/AKfycbwjIK0g0VejrDBNFhKVLUn45hzwn4VlnXf9aNPIK7YIJNp23Fk8GUX4y1_Uhpx2JOSY/exec";
+    const display = document.getElementById('display');
+    let lastTxn = "";
+
+    async function fetchLatest() {
+      try {
+        const res = await fetch(SHEET_URL);
+        const data = await res.json();
+
+        if (data.txnId !== lastTxn) {
+          lastTxn = data.txnId;
+          if (data.payment === "Cash") {
+            showChange(data.change);
+          }
+        }
+      } catch (err) {
+        console.log("讀取錯誤", err);
+      }
+    }
+
+    function showChange(change) {
+      display.innerHTML = `
+        <p class="text-4xl font-bold mb-4">💰 找零金額</p>
+        <p class="text-7xl font-extrabold text-yellow-400">${change}</p>
+        <p class="text-2xl mt-4">元</p>
+      `;
+      setTimeout(showCard, 20000); // 20秒後切回名片
+    }
+
+    function showCard() {
+      display.innerHTML = `
+        <img src="businesscard.png" alt="電子名片" class="w-full h-auto mx-auto rounded-lg shadow-lg" />
+      `;
+    }
+
+    // 每2秒檢查一次是否有新交易
+    setInterval(fetchLatest, 2000);
+  </script>
+</body>
+</html>
