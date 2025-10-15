@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>攤販POS系統</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-4">
+  <div class="max-w-5xl mx-auto grid grid-cols-3 gap-4">
+    <!-- 商品區 -->
+    <div class="col-span-2 grid grid-cols-6 gap-2">
+      <!-- 商品按鈕將由JS動態產生 -->
+    </div>
+
+    <!-- 購物清單區 -->
+    <div class="bg-white shadow-lg rounded-xl p-4 flex flex-col">
+      <h2 class="text-xl font-bold mb-2">購物清單</h2>
+      <ul id="cart" class="flex-1 overflow-y-auto mb-2 border p-2 rounded"></ul>
+      <div class="text-right text-lg font-bold mb-4">總金額：<span id="total">0</span> 元</div>
+      <button id="cashBtn" class="bg-green-500 hover:bg-green-600 text-white py-2 rounded mb-2">💵 現金結帳</button>
+      <button id="linePayBtn" class="bg-blue-500 hover:bg-blue-600 text-white py-2 rounded">💚 LINE Pay</button>
+    </div>
+  </div>
+
+  <script>
+    // 🧩 設定你的 Google Apps Script URL
+    const SHEET_URL = "https://script.google.com/macros/s/AKfycbwjIK0g0VejrDBNFhKVLUn45hzwn4VlnXf9aNPIK7YIJNp23Fk8GUX4y1_Uhpx2JOSY/exec";
+
+    // 商品資料（可自行修改）
+    const products = [
+      { name: "紅蘿蔔🥕髮夾", price: 30 }, { name: "花朵🌼髮夾", price: 35 }, { name: "太陽花🌞髮夾", price: 35 },
+      { name: "冰淇淋🍦髮夾", price: 35 }, { name: "泡芙花朵🌸髮夾", price: 35 }, { name: "(--)", price: 10 },
+      { name: "手機繩 小條", price: 70 }, { name: "手機繩 大條", price: 15 }, { name: "(--)", price: 20 },
+      { name: "(--)", price: 30 }, { name: "(--)", price: 50 }, { name: "(--)", price: 60 },
+      { name: "杯墊盆栽", price: 380 }, { name: "插花 鬱金香🌷", price: 180 }, { name: "(--)", price: 30 },
+      { name: "(--)", price: 20 }, { name: "(--)", price: 20 }, { name: "(--)", price: 20 },
+      { name: "鉤織花籃 小", price: 680 }, { name: "鉤織花籃 大 (純花)", price: 890 }, 
+      { name: "鉤織花籃 大 (花與娃娃)", price: 920 }, { name: "(--)", price: 45 }, 
+      { name: "(--)", price: 60 }, { name: "(--)", price: 20 },
+      { name: "飯糰", price: 35 }, { name: "(--)", price: 20 }, { name: "(--)", price: 25 },
+      { name: "蛋餅", price: 35 }, { name: "(--)", price: 30 }, { name: "(--)", price: 40 },
+      { name: "饅頭", price: 15 }, { name: "(--)", price: 20 }, { name: "(--)", price: 20 },
+      { name: "豆漿紅茶", price: 25 }, { name: "(--)", price: 45 }, { name: "(自訂金額)", price: 0 }
+    ];
+
+    const productContainer = document.querySelector('.grid-cols-6');
+    const cartEl = document.getElementById('cart');
+    const totalEl = document.getElementById('total');
+
+    let cart = [];
+    let total = 0;
+
+    // 建立商品按鈕
+    products.forEach((p) => {
+      const btn = document.createElement('button');
+      btn.textContent = `${p.name}\n$${p.price || ''}`;
+      btn.className = "text-center text-sm font-bold rounded-lg p-2 h-20 whitespace-pre-line";
+
+      // 判斷是否為禁用項
+      if (p.name === "(--)") {
+        btn.classList.add("bg-gray-300", "text-gray-500", "cursor-not-allowed");
+        btn.disabled = true;
+      } else if (p.name === "(自訂金額)") {
+        btn.classList.add("bg-pink-200", "hover:bg-pink-300");
+        btn.onclick = () => {
+          const custom = prompt("請輸入金額：");
+          const price = parseInt(custom);
+          if (!isNaN(price) && price > 0) {
+            addToCart({ name: "自訂金額", price });
+          }
+        };
+      } else {
+        btn.classList.add("bg-yellow-200", "hover:bg-yellow-300");
+        btn.onclick = () => addToCart(p);
+      }
+      productContainer.appendChild(btn);
+    });
+
+    function addToCart(product) {
+      cart.push(product);
+      total += product.price;
+      renderCart();
+    }
+
+    function renderCart() {
+      cartEl.innerHTML = '';
+      cart.forEach((item, i) => {
+        const li = document.createElement('li');
+        li.textContent = `${item.name} - $${item.price}`;
+        li.className = "flex justify-between border-b cursor-pointer hover:bg-red-50";
+        li.onclick = () => removeFromCart(i);
+        cartEl.appendChild(li);
+      });
+      totalEl.textContent = total;
+    }
+
+    function removeFromCart(index) {
+      total -= cart[index].price;
+      cart.splice(index, 1);
+      renderCart();
+    }
+
+   async function checkout(paymentType) {
+      if (cart.length === 0) return alert('請先選擇商品');
+      const txnId = 'TXN' + Date.now();
+      
+      let amountPaid = total; // 預設支付金額等於總金額
+      let change = 0; // 預設找零為 0
+
+      if (paymentType === 'Cash') {
+        const paidStr = prompt(`請輸入收到的現金金額 (總額 $${total})：`);
+        if (paidStr === null) return; // 使用者按取消
+
+        const paid = parseInt(paidStr);
+
+        if (isNaN(paid) || paid < total) {
+          return alert('無效的金額或支付金額不足，請重新結帳。');
+        }
+
+        amountPaid = paid;
+        change = paid - total;
+        alert(`已收 $${paid}，應找零 $${change}。`);
+      }
+
+
+      const body = {
+        items: cart.map(i => i.name),
+        total,
+        payment: paymentType,
+        txnId,
+        change, // 🆕 新增 'change' 欄位
+        // 🚨 注意：Apps Script 的 doPost 預期收到 total 和 payment，
+        // 但沒有 amountPaid (已付金額) 欄位，所以我們只送出 change
+        // Apps Script 中的 payment/total 邏輯不受影響
+      };
+
+      try {
+        const res = await fetch(SHEET_URL, {
+          method: 'POST',
+          body: JSON.stringify(body),
+          headers: { 'Content-Type': 'application/json' },
+          mode: 'cors'
+        });
+
+        // ✅ Apps Script 回傳內容可能不是純文字，需明確讀取
+        const text = await res.text();
+        if (text.includes('OK')) {
+          let successMessage = paymentType + ' 結帳成功！';
+          if (paymentType === 'Cash') {
+            successMessage += `\n已收 $${amountPaid}，找零 $${change}。`;
+          }
+          alert(successMessage);
+          cart = [];
+          total = 0;
+          renderCart();
+        } else {
+          alert('資料上傳失敗，伺服器回傳：' + text);
+        }
+      } catch (err) {
+        alert('❌ 網路錯誤：' + err.message);
+      }
+    }
+
+    document.getElementById('cashBtn').onclick = () => checkout('Cash');
+    document.getElementById('linePayBtn').onclick = () => checkout('LINE Pay');
+  </script>
+</body>
+</html>
